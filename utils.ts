@@ -1,17 +1,100 @@
+
+
 import { SlideContent, GeneratedQuizQuestion } from './types';
 
-export const playSound = (type: 'swoosh' | 'click' | 'thrum' | 'correct' | 'wrong', vibe: 'introvert' | 'ambivert' | 'extrovert') => {
-  // Sound simulation
-  // console.log(`Playing sound: ${type} with vibe: ${vibe}`);
+// Simple Audio Synth
+let audioCtx: AudioContext | null = null;
+let isGlobalMuted = false;
+
+export const setGlobalMute = (muted: boolean) => {
+  isGlobalMuted = muted;
 };
 
-export const calculateProgress = (current: number, total: number) => {
-  return (current / total) * 100;
+const initAudio = () => {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  return audioCtx;
 };
 
-// --- QUIZ ENGINE LOGIC ---
+const playTone = (freq: number, type: 'sine' | 'square' | 'triangle' | 'sawtooth', duration: number, volume: number = 0.1) => {
+  const ctx = initAudio();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, ctx.currentTime);
+  
+  gain.gain.setValueAtTime(volume, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+  
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  
+  osc.start();
+  osc.stop(ctx.currentTime + duration);
+};
 
-const STOP_WORDS = new Set(['the', 'and', 'is', 'in', 'at', 'of', 'to', 'a', 'an', 'for', 'on', 'with', 'by', 'this', 'that', 'it', 'you', 'are', 'will', 'be', 'or', 'as', 'but', 'not', 'have', 'from']);
+export const playSound = (type: 'swoosh' | 'click' | 'thrum' | 'correct' | 'wrong' | 'levelup' | 'alert', vibe: 'introvert' | 'ambivert' | 'extrovert') => {
+  try {
+    if (isGlobalMuted) return;
+
+    switch (type) {
+      case 'click':
+        playTone(vibe === 'introvert' ? 200 : vibe === 'extrovert' ? 600 : 400, 'triangle', 0.05, 0.05);
+        break;
+      case 'swoosh':
+        playTone(150, 'sine', 0.2, 0.05);
+        break;
+      case 'correct':
+        if (vibe === 'introvert') {
+          // Gentle major chord, soft sine
+          setTimeout(() => playTone(440, 'sine', 0.2, 0.05), 0);
+          setTimeout(() => playTone(554.37, 'sine', 0.2, 0.05), 100); 
+        } else if (vibe === 'extrovert') {
+          // Energetic 8-bit style arpeggio
+          setTimeout(() => playTone(880, 'square', 0.1, 0.05), 0);
+          setTimeout(() => playTone(1108.73, 'square', 0.1, 0.05), 50);
+          setTimeout(() => playTone(1318.51, 'square', 0.2, 0.05), 100);
+        } else {
+          // Ambivert: Standard reliable beep-beep
+          setTimeout(() => playTone(523.25, 'sine', 0.1, 0.1), 0); // C5
+          setTimeout(() => playTone(1046.50, 'sine', 0.2, 0.1), 100); // C6
+        }
+        break;
+      case 'wrong':
+        if (vibe === 'introvert') {
+          // Soft thud
+          playTone(150, 'triangle', 0.3, 0.1);
+        } else if (vibe === 'extrovert') {
+          // Error buzz descending
+          playTone(150, 'sawtooth', 0.2, 0.1);
+          setTimeout(() => playTone(100, 'sawtooth', 0.2, 0.1), 100);
+        } else {
+          // Standard buzz
+          playTone(150, 'sawtooth', 0.3, 0.1);
+        }
+        break;
+      case 'levelup':
+        // Ascending scale
+        [300, 400, 500, 600, 800].forEach((f, i) => setTimeout(() => playTone(f, 'square', 0.1, 0.1), i * 80));
+        break;
+      case 'alert':
+        // Sharp double beep for warnings
+        playTone(800, 'square', 0.1, 0.1);
+        setTimeout(() => playTone(800, 'square', 0.1, 0.1), 150);
+        break;
+    }
+  } catch (e) {
+    // Audio context might be blocked or failed
+    console.warn("Audio play failed", e);
+  }
+};
+
+const STOP_WORDS = new Set(['the', 'and', 'is', 'in', 'at', 'of', 'to', 'a', 'an', 'for', 'on', 'with', 'by', 'this', 'that', 'it', 'you', 'are', 'will', 'be', 'or', 'as', 'but', 'not', 'have', 'from', 'do', 'don\'t', 'can', 'may', 'should', 'we', 'my', 'your']);
 
 const shuffleArray = <T>(array: T[]): T[] => {
   const newArray = [...array];
@@ -24,99 +107,80 @@ const shuffleArray = <T>(array: T[]): T[] => {
 
 const extractKeywords = (text: string): string[] => {
   return text
-    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()"?]/g, "")
     .split(/\s+/)
-    .filter(w => w.length > 3 && !STOP_WORDS.has(w.toLowerCase()));
+    .filter(w => w.length > 4 && !STOP_WORDS.has(w.toLowerCase()));
 };
 
 export const generateQuizzesForSlide = (slide: SlideContent): GeneratedQuizQuestion[] => {
-  const questions: GeneratedQuizQuestion[] = [];
-  const fullText = slide.lines.join(" ");
-  const keywords = extractKeywords(fullText);
   const uniqueId = Math.random().toString(36).substr(2, 9);
+  const combinedText = [...(slide.title ? [slide.title] : []), ...slide.lines].join(" ");
+  const keywords = extractKeywords(combinedText);
+  const cleanLines = slide.lines.filter(l => l.split(" ").length > 3);
 
-  // 1. Fill in the Blank (Cloze)
-  if (slide.lines.length > 0) {
-    const randomLineIndex = Math.floor(Math.random() * slide.lines.length);
-    const line = slide.lines[randomLineIndex];
-    const lineWords = line.split(" ");
-    
-    // Find a suitable candidate for blanking
-    const candidates = lineWords.filter(w => w.length > 4 && !STOP_WORDS.has(w.toLowerCase()));
-    
-    if (candidates.length > 0) {
-      const targetWord = candidates[Math.floor(Math.random() * candidates.length)].replace(/[^\w]/g, '');
-      const questionText = line.replace(targetWord, "_______");
-      
-      // Generate distractors
-      const distractors = shuffleArray(keywords).filter(k => k !== targetWord).slice(0, 3);
-      while(distractors.length < 3) distractors.push("Something"); // Fallback
+  // Randomly choose ONE high-quality question type
+  const roll = Math.random();
 
-      const options = shuffleArray([targetWord, ...distractors]);
-
-      questions.push({
-        id: `${uniqueId}-1`,
-        type: 'cloze',
-        question: `Complete the sentence: "${questionText}"`,
-        options: options,
-        correctAnswer: targetWord
-      });
+  // TYPE 1: SCRAMBLE (Assemble a key sentence) - 40% chance if applicable
+  if (roll < 0.4 && cleanLines.length > 0) {
+    const targetLine = cleanLines[Math.floor(Math.random() * cleanLines.length)];
+    // Only scramble lines that aren't too long or too short
+    const words = targetLine.split(" ");
+    if (words.length >= 4 && words.length <= 12) {
+      return [{
+        id: `${uniqueId}-scramble`,
+        type: 'scramble',
+        question: "Reassemble the key idea:",
+        options: [],
+        scrambleParts: shuffleArray(words),
+        correctAnswer: targetLine
+      }];
     }
   }
 
-  // 2. True / False (Concept Check)
-  // We generate a True statement (from text) or a slightly modified False one.
-  // For simplicity in this robust generator, we will mostly stick to verifying the text exists.
-  const isTrue = Math.random() > 0.3; // 70% chance of being true to reinforce learning
-  let tfQuestion = "";
-  let tfAnswer = "";
+  // TYPE 2: CLOZE (Fill in the blank) - 30% chance
+  if (roll < 0.7 && keywords.length > 0) {
+    const targetKeyword = keywords[Math.floor(Math.random() * keywords.length)];
+    const cleanKeyword = targetKeyword.replace(/[^a-zA-Z]/g, '');
+    
+    // Find context
+    const contextLine = slide.lines.find(l => l.includes(targetKeyword)) || slide.title || "";
+    
+    if (cleanKeyword.length > 3 && contextLine) {
+       const questionText = contextLine.replace(targetKeyword, "_______");
+       const distractors = shuffleArray(["Summary", "Report", "Trend", "Detail", "Graph", "Chart", "Data", "Feature", "Contrast"])
+          .filter(d => d !== cleanKeyword)
+          .slice(0, 3);
+       
+       return [{
+         id: `${uniqueId}-cloze`,
+         type: 'cloze',
+         question: `Complete the concept: "${questionText}"`,
+         options: shuffleArray([cleanKeyword, ...distractors]),
+         correctAnswer: cleanKeyword
+       }];
+    }
+  }
+
+  // TYPE 3: LOGIC CHECK (True/False) - Fallback
+  const isTrue = Math.random() > 0.5;
+  let qText = "";
+  let ans = "";
 
   if (isTrue) {
-    tfQuestion = `True or False: The lesson states that "${slide.lines[0]}"?`;
-    tfAnswer = "True";
+    qText = `True or False: This slide discusses "${keywords[0] || 'Task 1 concepts'}"?`;
+    ans = "True";
   } else {
-    // Fabricate a false statement by pulling from a dummy list or negating (complex), 
-    // or just checking if a random keyword applies.
-    // Simpler False generation:
-    tfQuestion = `True or False: This slide discusses "Space Exploration"?`;
-    tfAnswer = "False";
+    // Make a fake topic
+    qText = `True or False: This slide explains "${['Nuclear Physics', 'Ancient History', 'Cooking Pasta', 'Rocket Science'][Math.floor(Math.random()*4)]}"?`;
+    ans = "False";
   }
 
-  questions.push({
-    id: `${uniqueId}-2`,
+  return [{
+    id: `${uniqueId}-tf`,
     type: 'true-false',
-    question: tfQuestion,
+    question: qText,
     options: ["True", "False"],
-    correctAnswer: tfAnswer
-  });
-
-  // 3. Translation / Comprehension Check
-  // Use the RU or UZ text to check understanding.
-  const useRu = Math.random() > 0.5;
-  const langLabel = useRu ? "Russian" : "Uzbek";
-  const sourceText = useRu ? slide.ru : slide.uz;
-  
-  // Clean translation text to get a snippet
-  const cleanTrans = sourceText.split('/')[0].trim(); // Take first part if split
-
-  questions.push({
-    id: `${uniqueId}-3`,
-    type: 'translation',
-    question: `The ${langLabel} translation for this section starts with:`,
-    options: [cleanTrans, "Something completely different", "An unrelated topic", "Mathematics formulas"], // Simplified distractors for the engine
-    correctAnswer: cleanTrans
-  });
-
-  // If we couldn't generate 3 (due to empty text etc), fill with generics
-  while (questions.length < 3) {
-    questions.push({
-      id: `${uniqueId}-generic-${questions.length}`,
-      type: 'true-false',
-      question: "True or False: This is a critical IELTS concept.",
-      options: ["True", "False"],
-      correctAnswer: "True"
-    });
-  }
-
-  return questions;
+    correctAnswer: ans
+  }];
 };

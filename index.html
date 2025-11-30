@@ -22,6 +22,22 @@
               'introvert-primary': '#44403c',
               'extrovert-primary': '#000000',
               'extrovert-accent': '#eab308',
+            },
+            animation: {
+              'blob': 'blob 7s infinite',
+              'float': 'float 6s ease-in-out infinite',
+            },
+            keyframes: {
+              blob: {
+                '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                '100%': { transform: 'translate(0px, 0px) scale(1)' },
+              },
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-20px)' },
+              }
             }
           }
         }
@@ -30,17 +46,31 @@
     <style>
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
-        width: 8px;
+        width: 6px;
+        height: 6px;
       }
       ::-webkit-scrollbar-track {
-        background: transparent;
+        background: rgba(0,0,0,0.05);
       }
       ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 4px;
+        background: rgba(100,116,139,0.5);
+        border-radius: 10px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
+        background: rgba(100,116,139,0.8);
+      }
+
+      /* Noise Texture */
+      .bg-noise {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        z-index: 5;
+        opacity: 0.03;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
       }
     </style>
   <script type="importmap">
@@ -51,12 +81,14 @@
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "framer-motion": "https://aistudiocdn.com/framer-motion@^12.23.24",
     "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.6",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0"
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0"
   }
 }
 </script>
 </head>
   <body>
     <div id="root"></div>
+    <div class="bg-noise"></div>
   </body>
 </html>
